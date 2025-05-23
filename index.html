@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8" />
+  <title>Anekdote Quiz</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 20px;
+    }
+    .container {
+      display: flex;
+      justify-content: space-around;
+      width: 100%;
+      max-width: 900px;
+    }
+    .column {
+      width: 45%;
+    }
+    .item {
+      padding: 10px;
+      margin: 5px;
+      background-color: #f0f0f0;
+      border-radius: 5px;
+      cursor: grab;
+    }
+    .droptarget {
+      border: 2px dashed #ccc;
+      min-height: 40px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .matched {
+      background-color: lightgreen;
+    }
+    #startScreen {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    #quizSection {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+    }
+  </style>
+</head>
+<body>
+  <div id="startScreen">
+    <h1>Anekdote Quiz</h1>
+    <p>Voer je naam in om mee te doen:</p>
+    <input type="text" id="playerName" placeholder="Jouw naam" />
+    <button onclick="startQuiz()">Start</button>
+  </div>
+
+  <div id="quizSection">
+    <h1>Wie deed wat?</h1>
+    <p>Sleep de anekdotes naar de juiste naam. Je speelt 3 rondes: GG, DD en TDUP.</p>
+    <div id="quiz"></div>
+    <button onclick="checkAnswers()">Controleer</button>
+    <button onclick="nextRound()">Volgende ronde</button>
+    <button onclick="showAnswers()" id="answerBtn" style="display:none">Toon goede antwoorden</button>
+    <p id="result"></p>
+    <ul id="answerList"></ul>
+  </div>
+
+  <!-- Firebase SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js"></script>
+  <script>
+    // TODO: Vervang dit met jouw eigen firebaseConfig
+    const firebaseConfig = {
+      apiKey: "AIzaSyBclQZibJzLx89STg_oETGQyBBICt5MrVs",
+      authDomain: "anekdotequiz.firebaseapp.com",
+      databaseURL: "https://YOUR_PROJECT_ID-default-rtdb.europe-west1.firebasedatabase.app",
+      projectId: "anekdotequiz",
+      storageBucket: "anekdotequiz.firebasestorage.app",
+      messagingSenderId: "616085111129",
+      appId: "1:616085111129:web:dbca21a06a969558accc48"
+    };
+
+    const app = firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
+    const allData = [
+      { naam: "Luc", anekdote: "gebeten door giftige slang", team: "GG" },
+      { naam: "Zoe", anekdote: "Nederlands kampioen turnen", team: "GG" },
+      { naam: "Ceriel", anekdote: "Mount Everest beklommen", team: "DD" },
+      { naam: "Christianne", anekdote: "gezwommen tussen de dolfijnen", team: "DD" },
+      { naam: "Meral", anekdote: "spreekt vloeiend chinees", team: "TDUP" },
+      { naam: "Ewout", anekdote: "heeft in een onderzeeër gezeten", team: "TDUP" }
+    ];
+
+    let playerName = "";
+    let currentRound = 0;
+    let totalCorrect = 0;
+    const teams = ["GG", "DD", "TDUP"];
+
+    function startQuiz() {
+      const input = document.getElementById("playerName");
+      if (!input.value.trim()) {
+        alert("Vul je naam in!");
+        return;
+      }
+      playerName = input.value.trim();
+      document.getElementById("startScreen").style.display = "none";
+      document.getElementById("quizSection").style.display = "flex";
+      db.ref("players/" + playerName).set({ score: 0 });
+      renderRound();
+    }
+
+    function renderRound() {
+      const quizDiv = document.getElementById("quiz");
+      quizDiv.innerHTML = "";
+      const team = teams[currentRound];
+      const data = allData.filter(d => d.team === team);
+      const shuffled = [...data].sort(() => 0.5 - Math.random());
+
+      const container = document.createElement("div");
+      container.className = "container";
+
+      const nameCol = document.createElement("div");
+      nameCol.className = "column";
+      data.forEach(person => {
+        const div = document.createElement("div");
+        div.className = "item droptarget";
+        div.dataset.name = person.naam;
+        div.textContent = person.naam;
+        nameCol.appendChild(div);
+      });
+
+      const anecdoteCol = document.createElement("div");
+      anecdoteCol.className = "column";
+      shuffled.forEach(person => {
+        const div = document.createElement("div");
+        div.className = "item";
+        div.draggable = true;
+        div.dataset.match = person.naam;
+        div.textContent = person.anekdote;
+        anecdoteCol.appendChild(div);
+      });
+
+      container.appendChild(nameCol);
+      container.appendChild(anecdoteCol);
+      quizDiv.appendChild(container);
+
+      enableDragDrop();
+    }
+
+    function enableDragDrop() {
+      let dragged;
+      document.querySelectorAll('[draggable=true]').forEach(item => {
+        item.addEventListener('dragstart', e => dragged = e.target);
+      });
+
+      document.querySelectorAll('.droptarget').forEach(target => {
+        target.addEventListener('dragover', e => e.preventDefault());
+        target.addEventListener('drop', e => {
+          e.preventDefault();
+          if (!target.querySelector('[draggable=true]')) {
+            target.appendChild(dragged);
+          }
+        });
+      });
+    }
+
+    function checkAnswers() {
+      let correct = 0;
+      document.querySelectorAll('.droptarget').forEach(target => {
+        const name = target.dataset.name;
+        const anecdote = target.querySelector('[draggable=true]');
+        if (anecdote && anecdote.dataset.match === name) {
+          correct++;
+          target.classList.add('matched');
+        } else {
+          target.classList.remove('matched');
+        }
+      });
+      totalCorrect += correct;
+      db.ref("players/" + playerName).update({ score: totalCorrect });
+      document.getElementById('result').textContent = `Ronde ${currentRound+1}: ${correct} goed. Totaal: ${totalCorrect}`;
+    }
+
+    function nextRound() {
+      if (currentRound < teams.length - 1) {
+        currentRound++;
+        renderRound();
+        document.getElementById('result').textContent = "";
+      } else {
+        document.getElementById('answerBtn').style.display = 'inline';
+        document.getElementById('result').textContent = `Klaar! Totaalscore: ${totalCorrect}`;
+      }
+    }
+
+    function showAnswers() {
+      const list = document.getElementById('answerList');
+      list.innerHTML = "";
+      allData.forEach(d => {
+        const li = document.createElement("li");
+        li.textContent = `${d.naam} – ${d.anekdote}`;
+        list.appendChild(li);
+      });
+    }
+  </script>
+</body>
+</html>
